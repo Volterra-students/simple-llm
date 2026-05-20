@@ -2,106 +2,36 @@ import streamlit as st
 import tensorflow as tf
 import numpy as np
 import re
+import json
+from argparse import ArgumentParser
 
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.utils import to_categorical
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Embedding, LSTM, Dense
+from tensorflow.keras.models import load_model
+
+
+parser = ArgumentParser()
+parser.add_argument("-m", "--model", help="file di output del modello keras",
+                    default="model/model.keras")
+parser.add_argument("-i", "--indices", help="nome del file di testo da cui iniziare",
+                    default="model/indices.json")
+parser.add_argument("-l", "--len", help="lunghezza sequenza", default=5)
+args = parser.parse_args()
 
 # =========================
-# PREPARAZIONE MODELLO
+# CARICAMENTO MODELLO
 # =========================
 
-testo = """
-Nel mezzo del cammin di nostra vita
-mi ritrovai per una selva oscura,
-ché la diritta via era smarrita.
-Ahi quanto a dir qual era è cosa dura
-esta selva selvaggia e aspra e forte
-che nel pensier rinova la paura!
-Tant' è amara che poco è più morte;
-ma per trattar del ben ch'i' vi trovai,
-dirò de l'altre cose ch'i' v'ho scorte.
-Io non so ben ridir com' i' v'intrai,
-tant' era pien di sonno a quel punto
-che la verace via abbandonai.
-Ma poi ch'i' fui al piè d'un colle giunto,
-là dove terminava quella valle
-che m'avea di paura il cor compunto,
-guardai in alto e vidi le sue spalle
-vestite già de' raggi del pianeta
-che mena dritto altrui per ogne calle.
-Allor fu la paura un poco queta,
-che nel lago del cor m'era durata
-la notte ch'i' passai con tanta pieta.
-E come quei che con lena affannata,
-uscito fuor del pelago a la riva,
-si volge a l'acqua perigliosa e guata,
-così l'animo mio, ch'ancor fuggiva,
-si volse a retro a rimirar lo passo
-che non lasciò già mai persona viva.
-Poi ch'èi posato un poco il corpo lasso,
-ripresi via per la piaggia diserta,
-sì che 'l piè fermo sempre era 'l più basso.
-Ed ecco, quasi al cominciar de l'erta,
-una lonza leggiera e presta molto,
-che di pel macolato era coverta;
-e non mi si partia dinanzi al volto,
-anzi 'mpediva tanto il mio cammino,
-ch'i' fui per ritornar più volte vòlto.
-Temp' era dal principio del mattino,
-e 'l sol montava 'n sù con quelle stelle
-ch'eran con lui quando l'amor divino
-mosse di prima quelle cose belle;
-sì ch'a bene sperar m'era cagione
-di quella fiera a la gaetta pelle
-l'ora del tempo e la dolce stagione;
-ma non sì che paura non mi desse
-la vista che m'apparve d'un leone.
-"""
+modello = load_model(args.model)
 
-testo = testo.lower()
-testo = re.sub(r"[^\w\sàèéìòù]", "", testo)
-testo = re.sub(r"\s+", " ", testo).strip()
+with open(args.indices, "rt") as f:
+    indici = json.load(f)
+indice_parola = {int(indice): parola for indice, parola in indici.items()}
+parola_indice = {parola: indice for indice, parola in indice_parola.items()}
 
-tokenizer = Tokenizer()
-tokenizer.fit_on_texts([testo])
-
-sequenza_tokenizzata = tokenizer.texts_to_sequences([testo])[0]
-vocabolario = len(tokenizer.word_index) + 1
-indice_parola = {indice: parola for parola, indice in tokenizer.word_index.items()}
-
-lunghezza_sequenza = 5
-
-X = []
-y = []
-
-for i in range(len(sequenza_tokenizzata) - lunghezza_sequenza):
-    X.append(sequenza_tokenizzata[i:i + lunghezza_sequenza])
-    y.append(sequenza_tokenizzata[i + lunghezza_sequenza])
-
-X = np.array(X)
-y = np.array(y)
-y = to_categorical(y, num_classes=vocabolario)
-
-@st.cache_resource
-def crea_e_addestra_modello():
-    modello = Sequential([
-        Embedding(input_dim=vocabolario, output_dim=32),
-        LSTM(64),
-        Dense(vocabolario, activation="softmax")
-    ])
-
-    modello.compile(
-        loss="categorical_crossentropy",
-        optimizer="adam",
-        metrics=["accuracy"]
-    )
-
-    modello.fit(X, y, epochs=300, verbose=0)
-    return modello
-
-modello = crea_e_addestra_modello()
+def text_to_sequence(frase):
+    sequenza = []
+    for parola in frase.split(" "):
+        sequenza.append(parola_indice.get(parola))
+    return sequenza
 
 # =========================
 # FUNZIONI
@@ -116,12 +46,12 @@ def pulisci_frase(frase):
 def predici_prossima_parola(frase):
     frase = pulisci_frase(frase)
 
-    sequenza = tokenizer.texts_to_sequences([frase])[0]
+    sequenza = text_to_sequence(frase)
 
-    if len(sequenza) < lunghezza_sequenza:
+    if len(sequenza) < args.len:
         return None
 
-    sequenza = sequenza[-lunghezza_sequenza:]
+    sequenza = sequenza[-args.len:]
     sequenza = np.array([sequenza])
 
     predizione = modello.predict(sequenza, verbose=0)
