@@ -10,10 +10,11 @@ from tensorflow.keras.models import load_model
 
 parser = ArgumentParser()
 parser.add_argument("-m", "--model", help="file di output del modello keras",
-                    default="model/model.keras")
+                    default="./training/model/model.keras")
 parser.add_argument("-i", "--indices", help="nome del file di testo da cui iniziare",
-                    default="model/indices.json")
-parser.add_argument("-l", "--len", help="lunghezza sequenza", default=5)
+                    default="./training/model/indices.json")
+#parser.add_argument("-l", "--len", help="lunghezza sequenza", default=5)
+parser.add_argument("-l", "--len", help="lunghezza sequenza", default=5, type=int)
 args = parser.parse_args()
 
 # =========================
@@ -29,8 +30,15 @@ parola_indice = {parola: indice for indice, parola in indice_parola.items()}
 
 def text_to_sequence(frase):
     sequenza = []
-    for parola in frase.split(" "):
-        sequenza.append(parola_indice.get(parola))
+
+    for parola in frase.split():
+        indice = parola_indice.get(parola)
+
+        if indice is None:
+            return None
+
+        sequenza.append(indice)
+
     return sequenza
 
 # =========================
@@ -48,14 +56,17 @@ def predici_prossima_parola(frase):
 
     sequenza = text_to_sequence(frase)
 
+    if sequenza is None:
+        return None
+
     if len(sequenza) < args.len:
         return None
 
     sequenza = sequenza[-args.len:]
-    sequenza = np.array([sequenza])
+    sequenza = np.array([sequenza], dtype=np.int32)
 
     predizione = modello.predict(sequenza, verbose=0)
-    indice_predetto = np.argmax(predizione)
+    indice_predetto = int(np.argmax(predizione))
 
     return indice_parola.get(indice_predetto, None)
 
